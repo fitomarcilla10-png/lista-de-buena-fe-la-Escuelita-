@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Club de Básquetbol - Gestión de Jugadores</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 300: '#fdba74', 400: '#fb923c', 500: '#f97316', 600: '#ea580c', 700: '#c2410c' },
+                        dark: { 800: '#1e1e2e', 850: '#181825', 900: '#11111b', 950: '#0a0a12' }
+                    },
+                    fontFamily: {
+                        display: ['Bebas Neue', 'sans-serif'],
+                        body: ['DM Sans', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { font-family: 'DM Sans', sans-serif; }
+        .font-display { font-family: 'Bebas Neue', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1e1e2e; }
+        ::-webkit-scrollbar-thumb { background: #4a4a5e; border-radius: 3px; }
+        .dropzone { border: 2px dashed #4a4a5e; transition: all 0.2s; }
+        .dropzone:hover { border-color: #f97316; background: rgba(249,115,22,0.05); }
+        .tab-active { border-bottom: 3px solid #f97316; color: #f97316; }
+        input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+        .animate-in { animation: fadeIn 0.3s ease-out forwards; }
+        .progress-bar { transition: width 1.5s ease-in-out; }
+    </style>
+</head>
+<body class="bg-dark-900 text-gray-200 min-h-screen">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+
+// ============ UTILIDADES ============
+const calculateAge = (birthDate) => {
+    if (!birthDate) return null;
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age;
+};
+
+const calculateCategory = (birthDate) => {
+    if (!birthDate) return '';
+    const birthYear = new Date(birthDate).getFullYear();
+    const currentYear = new Date().getFullYear();
+    const age = currentYear - birthYear;
+    if (age <= 13) return 'U13';
+    if (age <= 15) return 'U15';
+    if (age <= 17) return 'U17';
+    if (age <= 19) return 'U19';
+    if (age <= 21) return 'U21';
+    return 'Mayores';
+};
+
+/**
+ * Simula la subida de un archivo a Google Drive.
+ * En producción, aquí iría la integración real con la API de Google Drive.
+ * @param {File} file - El archivo a subir
+ * @param {string} folderId - El ID de la carpeta destino en Drive
+ * @returns {Promise<string>} - URL ficticia del archivo en Drive
+ */
+async function uploadFileToGoogleDrive(file, folderId) {
+    // Simular latencia de red
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Simular respuesta exitosa con enlace ficticio
+    const fakeFileId = Math.random().toString(36).substring(2, 15);
+    const driveLink = `https://drive.google.com/file/d/${fakeFileId}/view`;
+    return driveLink;
+}
+
+const exportToCSV = (players) => {
+    const headers = ['Apellido y Nombre','DNI','Fecha Nacimiento','Edad','Género','Categoría','Dirección','Teléfono','Email','Altura (cm)','Peso (kg)','Talle Camiseta','Talle Pantalón','Talle Buzo','Nombre Camiseta','Grupo Sanguíneo','Obra Social','Nro Afiliado','Alergias','Condiciones Médicas','Medicamentos','Contacto Emergencia Nombre','Contacto Emergencia Parentesco','Contacto Emergencia Teléfono','Tutor Nombre','Tutor DNI','Tutor Parentesco','Tutor Teléfono','Tutor Email','Foto Perfil','DNI Frente','DNI Dorso','DNI Tutor','Certificado Médico'];
+    const rows = players.map(p => [
+        p.fullName, p.dni, p.birthDate, calculateAge(p.birthDate), p.gender, calculateCategory(p.birthDate),
+        p.address, p.phone, p.email, p.height, p.weight, p.shirtSize, p.shortSize, p.jacketSize, p.shirtName,
+        p.bloodType, p.healthInsurance, p.affiliateNumber, p.allergies, p.medicalConditions, p.medications,
+        p.emergencyName, p.emergencyRelation, p.emergencyPhone,
+        p.tutorName, p.tutorDni, p.tutorRelation, p.tutorPhone, p.tutorEmail,
+        p.files?.photo || '', p.files?.dniFront || '', p.files?.dniBack || '', p.files?.dniTutor || '', p.files?.medCert || ''
+    ]);
+    const BOM = '\uFEFF';
+    const csv = BOM + [headers.join(';'), ...rows.map(r => r.map(v => `"${(v||'').toString().replace(/"/g,'""')}"`).join(';'))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'jugadores_club_basquet.csv'; a.click();
+    URL.revokeObjectURL(url);
+};
+
+// ============ MOCK DATA ============
+const MOCK_PLAYERS = [
+    {
+        id: '1', fullName: 'Gonzalez Matías', dni: '45678901', birthDate: '2010-03-15', gender: 'Masculino',
+        address: 'Av. San Martín 1234, CABA', phone: '1155667788', email: 'matias.gonzalez@email.com',
+        height: '165', weight: '58', shirtSize: 'M', shortSize: 'M', jacketSize: 'L', shirtName: 'MATI',
+        bloodType: 'A+', healthInsurance: 'OSDE', affiliateNumber: '123456', allergies: 'Ninguna',
+        medicalConditions: 'Ninguna', medications: 'Ninguno', emergencyName: 'Laura Gonzalez', emergencyRelation: 'Madre', emergencyPhone: '1144332211',
+        tutorName: 'Laura Gonzalez', tutorDni: '28765432', tutorRelation: 'Madre', tutorPhone: '1144332211', tutorEmail: 'laura.g@email.com',
+        files: { photo: 'https://drive.google.com/file/d/abc123/view', dniFront: 'https://drive.google.com/file/d/def456/view', dniBack: '', dniTutor: 'https://drive.google.com/file/d/ghi789/view', medCert: 'https://drive.google.com/file/d/jkl012/view' }
+    },
+    {
+        id: '2', fullName: 'Rodriguez Facundo', dni: '38901234', birthDate: '1998-07-22', gender: 'Masculino',
+        address: 'Calle Belgrano 567, Córdoba', phone: '3514455667', email: 'facu.rodriguez@email.com',
+        height: '188', weight: '82', shirtSize: 'XL', shortSize: 'L', jacketSize: 'XL', shirtName: 'FACU',
+        bloodType: 'O-', healthInsurance: 'Swiss Medical', affiliateNumber: '789012', allergies: 'Penicilina',
+        medicalConditions: 'Ninguna', medications: 'Ninguno', emergencyName: 'Carlos Rodriguez', emergencyRelation: 'Padre', emergencyPhone: '3519988776',
+        tutorName: '', tutorDni: '', tutorRelation: '', tutorPhone: '', tutorEmail: '',
+        files: { photo: 'https://drive.google.com/file/d/mno345/view', dniFront: 'https://drive.google.com/file/d/pqr678/view', dniBack: 'https://drive.google.com/file/d/stu901/view', dniTutor: '', medCert: '' }
+    }
+];
+
+// ============ ICONOS (Lucide manual SVG) ============
+const Icon = ({ name, size = 20, className = '' }) => {
+    const icons = {
+        'user': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+        'basketball': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M2.1 13.4A10.1 10.1 0 0 0 13.4 2.1"/><path d="M21.9 10.6a10.1 10.1 0 0 0-11.3 11.3"/><path d="m2 2 20 20"/></svg>,
+        'clipboard': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>,
+        'database': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>,
+        'upload': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>,
+        'check': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 6 9 17l-5-5"/></svg>,
+        'x': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
+        'search': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
+        'download': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>,
+        'edit': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>,
+        'trash': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
+        'heart': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>,
+        'shield': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>,
+        'shirt': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>,
+        'users': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+        'file': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>,
+        'drive': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 2 2 19.5h20L12 2z"/><path d="m2 19.5 5-8.5h14"/><path d="m7 11 5 8.5 10-8.5"/></svg>,
+        'filter': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>,
+        'plus': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
+        'save': <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>,
+    };
+    return icons[name] || null;
+};
+
+// ============ COMPONENTES UI ============
+const Input = ({ label, type = 'text', value, onChange, required, placeholder, disabled }) => (
+    <div className="flex flex-col gap-1">
+        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}{required && <span className="text-brand-500 ml-1">*</span>}</label>
+        <input type={type} value={value || ''} onChange={e => onChange(e.target.value)} required={required} placeholder={placeholder} disabled={disabled}
+            className="bg-dark-850 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition disabled:opacity-50" />
+    </div>
+);
+
+const Select = ({ label, value, onChange, options, required }) => (
+    <div className="flex flex-col gap-1">
+        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}{required && <span className="text-brand-500 ml-1">*</span>}</label>
+        <select value={value || ''} onChange={e => onChange(e.target.value)} required={required}
+            className="bg-dark-850 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-100 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition appearance-none">
+            <option value="">Seleccionar...</option>
+            {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+    </div>
+);
+
+const TextArea = ({ label, value, onChange, required, placeholder }) => (
+    <div className="flex flex-col gap-1">
+        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}{required && <span className="text-brand-500 ml-1">*</span>}</label>
+        <textarea value={value || ''} onChange={e => onChange(e.target.value)} required={required} placeholder={placeholder} rows={2}
+            className="bg-dark-850 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition resize-none" />
+    </div>
+);
+
+const SectionCard = ({ title, icon, children, className = '' }) => (
+    <div className={`bg-dark-850 border border-gray-700/50 rounded-xl p-6 animate-in ${className}`}>
+        <div className="flex items-center gap-3 mb-5 pb-3 border-b border-gray-700/50">
+            <div className="w-9 h-9 rounded-lg bg-brand-500/10 flex items-center justify-center text-brand-500">
+                <Icon name={icon} size={18} />
+            </div>
+            <h3 className="font-display text-xl tracking-wide text-gray-100">{title}</h3>
+        </div>
+        {children}
+    </div>
+);
+
+// ============ DROPZONE ============
+const FileDropzone = ({ label, fileUrl, onUpload }) => {
+    const [uploading, setUploading] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const inputRef = useRef(null);
+
+    const handleFile = async (file) => {
+        setUploading(true); setProgress(0);
+        const interval = setInterval(() => setProgress(p => Math.min(p + 20, 90)), 300);
+        const link = await uploadFileToGoogleDrive(file, 'folder_123');
+        clearInterval(interval); setProgress(100);
+        setTimeout(() => { setUploading(false); onUpload(link); }, 500);
+    };
+
+    return (
+        <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}</label>
+            <div className="dropzone rounded-lg p-4 flex flex-col items-center justify-center gap-2 cursor-pointer min-h-[100px] relative"
+                onClick={() => inputRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }}>
+                <input ref={inputRef} type="file" className="hidden" accept="image/*,.pdf" onChange={e => { if(e.target.files[0]) handleFile(e.target.files[0]); }} />
+                {uploading ? (
+                    <div className="w-full px-4">
+                        <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                            <div className="bg-brand-500 h-full rounded-full progress-bar" style={{width: `${progress}%`}}></div>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2 text-center">Subiendo a Drive...</p>
+                    </div>
+                ) : fileUrl ? (
+                    <div className="flex items-center gap-2 text-green-400">
+                        <Icon name="check" size={18} />
+                        <span className="text-xs">Archivo subido</span>
+                    </div>
+                ) : (
+                    <>
+                        <Icon name="upload" size={24} className="text-gray-500" />
+                        <span className="text-xs text-gray-500">Click o arrastrar archivo</span>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// ============ FORMULARIO DE INSCRIPCIÓN ============
+const InscriptionForm = ({ onSave, editingPlayer, onCancelEdit }) => {
+    const emptyForm = { fullName:'',dni:'',birthDate:'',gender:'',address:'',phone:'',email:'',height:'',weight:'',shirtSize:'',shortSize:'',jacketSize:'',shirtName:'',bloodType:'',healthInsurance:'',affiliateNumber:'',allergies:'',medicalConditions:'',medications:'',emergencyName:'',emergencyRelation:'',emergencyPhone:'',tutorName:'',tutorDni:'',tutorRelation:'',tutorPhone:'',tutorEmail:'',files:{photo:'',dniFront:'',dniBack:'',dniTutor:'',medCert:''} };
+    const [form, setForm] = useState(emptyForm);
+    const [driveConnected, setDriveConnected] = useState(false);
+
+    useEffect(() => { if (editingPlayer) setForm({...emptyForm, ...editingPlayer}); }, [editingPlayer]);
+
+    const set = (key) => (val) => setForm(f => ({...f, [key]: val}));
+    const setFile = (key) => (url) => setForm(f => ({...f, files: {...f.files, [key]: url}}));
+
+    const age = calculateAge(form.birthDate);
+    const category = calculateCategory(form.birthDate);
+    const isMinor = age !== null && age < 18;
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (isMinor && (!form.tutorName || !form.tutorDni || !form.tutorPhone)) {
+            alert('Para menores de edad, los datos del tutor son obligatorios.');
+            return;
+        }
+        onSave({ ...form, id: form.id || Date.now().toString() });
+        setForm(emptyForm);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Header con Drive */}
+            <div className="flex items-center justify-between mb-2">
+                <div></div>
+                <button type="button" onClick={() => setDriveConnected(!driveConnected)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${driveConnected ? 'bg-green-500/10 text-green-400 border border-green-500/30' : 'bg-dark-850 text-gray-400 border border-gray-700 hover:border-brand-500'}`}>
+                    <Icon name="drive" size={16} />
+                    {driveConnected ? 'Drive Conectado' : 'Conectar con Google Drive'}
+                </button>
+            </div>
+
+            {/* Sección 1 */}
+            <SectionCard title="Datos Personales y de Contacto" icon="user">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <Input label="Apellido(s) y Nombre(s)" value={form.fullName} onChange={set('fullName')} required />
+                    <Input label="DNI / Pasaporte" value={form.dni} onChange={set('dni')} required />
+                    <Input label="Fecha de Nacimiento" type="date" value={form.birthDate} onChange={set('birthDate')} required />
+                    <Select label="Género / Rama" value={form.gender} onChange={set('gender')} options={['Masculino','Femenino']} required />
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Edad</label>
+                        <div className="bg-dark-900 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-brand-400 font-semibold">
+                            {age !== null ? `${age} años` : '—'}
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Categoría</label>
+                        <div className="bg-dark-900 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-brand-400 font-semibold">
+                            {category || '—'}
+                        </div>
+                    </div>
+                    <Input label="Dirección de Residencia" value={form.address} onChange={set('address')} />
+                    <Input label="Teléfono Celular" value={form.phone} onChange={set('phone')} required />
+                    <Input label="Correo Electrónico" type="email" value={form.email} onChange={set('email')} />
+                </div>
+            </SectionCard>
+
+            {/* Sección 2 */}
+            <SectionCard title="Datos Deportivos y Ficha Técnica" icon="basketball">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Input label="Altura (cm)" type="number" value={form.height} onChange={set('height')} placeholder="ej: 178" />
+                    <Input label="Peso (kg)" type="number" value={form.weight} onChange={set('weight')} placeholder="ej: 72" />
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Categoría Calculada</label>
+                        <div className="bg-brand-500/10 border border-brand-500/30 rounded-lg px-3 py-2.5 text-sm text-brand-400 font-bold text-center">
+                            {category || 'Ingrese fecha de nacimiento'}
+                        </div>
+                    </div>
+                </div>
+            </SectionCard>
+
+            {/* Sección 3 */}
+            <SectionCard title="Logística e Indumentaria" icon="shirt">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Select label="Talle Camiseta / Musculosa" value={form.shirtSize} onChange={set('shirtSize')} options={['S','M','L','XL','XXL','XXXL']} />
+                    <Select label="Talle Pantalón / Short" value={form.shortSize} onChange={set('shortSize')} options={['S','M','L','XL','XXL']} />
+                    <Select label="Talle Buzo / Campera" value={form.jacketSize} onChange={set('jacketSize')} options={['S','M','L','XL','XXL']} />
+                    <Input label="Nombre en Camiseta" value={form.shirtName} onChange={set('shirtName')} placeholder="Apodo o apellido" />
+                </div>
+            </SectionCard>
+
+            {/* Sección 4 */}
+            <SectionCard title="Control Médico y Salud" icon="heart">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <Select label="Grupo Sanguíneo y Factor" value={form.bloodType} onChange={set('bloodType')} options={['A+','A-','B+','B-','AB+','AB-','O+','O-']} />
+                    <Input label="Obra Social / Prepaga" value={form.healthInsurance} onChange={set('healthInsurance')} />
+                    <Input label="Número de Afiliado" value={form.affiliateNumber} onChange={set('affiliateNumber')} />
+                    <TextArea label="Alergias Conocidas" value={form.allergies} onChange={set('allergies')} placeholder="Medicamentos, alimentos, picaduras..." />
+                    <TextArea label="Condiciones Médicas / Crónicas" value={form.medicalConditions} onChange={set('medicalConditions')} placeholder="Asma, diabetes, etc." />
+                    <TextArea label="Medicamentos de Uso Diario" value={form.medications} onChange={set('medications')} />
+                </div>
+                <div className="mt-4 pt-4 border-t border-gray-700/50">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-3 font-medium">Contacto de Emergencia</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Input label="Nombre Completo" value={form.emergencyName} onChange={set('emergencyName')} required />
+                        <Input label="Parentesco" value={form.emergencyRelation} onChange={set('emergencyRelation')} />
+                        <Input label="Teléfono" value={form.emergencyPhone} onChange={set('emergencyPhone')} required />
+                    </div>
+                </div>
+            </SectionCard>
+
+            {/* Sección 5 - Tutor */}
+            <SectionCard title="Datos de Menores (Tutor/Responsable)" icon="shield" className={isMinor ? 'ring-2 ring-brand-500/50' : 'opacity-60'}>
+                {isMinor && <div className="mb-4 px-3 py-2 bg-brand-500/10 border border-brand-500/30 rounded-lg text-xs text-brand-400 font-medium">⚠ El jugador es menor de edad. Estos campos son OBLIGATORIOS.</div>}
+                {!isMinor && age !== null && <div className="mb-4 px-3 py-2 bg-gray-700/30 rounded-lg text-xs text-gray-500">Jugador mayor de edad — sección opcional.</div>}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <Input label="Nombre y Apellido del Tutor" value={form.tutorName} onChange={set('tutorName')} required={isMinor} />
+                    <Input label="DNI del Tutor" value={form.tutorDni} onChange={set('tutorDni')} required={isMinor} />
+                    <Select label="Parentesco" value={form.tutorRelation} onChange={set('tutorRelation')} options={['Madre','Padre','Tutor Legal']} required={isMinor} />
+                    <Input label="Teléfono del Tutor" value={form.tutorPhone} onChange={set('tutorPhone')} required={isMinor} />
+                    <Input label="Correo Electrónico del Tutor" type="email" value={form.tutorEmail} onChange={set('tutorEmail')} />
+                </div>
+            </SectionCard>
+
+            {/* Sección 6 - Documentos */}
+            <SectionCard title="Documentación y Archivos Adjuntos" icon="file">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                    <FileDropzone label="Foto de Perfil" fileUrl={form.files?.photo} onUpload={setFile('photo')} />
+                    <FileDropzone label="DNI Frente" fileUrl={form.files?.dniFront} onUpload={setFile('dniFront')} />
+                    <FileDropzone label="DNI Dorso" fileUrl={form.files?.dniBack} onUpload={setFile('dniBack')} />
+                    <FileDropzone label="DNI del Tutor" fileUrl={form.files?.dniTutor} onUpload={setFile('dniTutor')} />
+                    <FileDropzone label="Certificado Médico" fileUrl={form.files?.medCert} onUpload={setFile('medCert')} />
+                </div>
+            </SectionCard>
+
+            {/* Botones */}
+            <div className="flex gap-3 justify-end pt-2">
+                {editingPlayer && (
+                    <button type="button" onClick={() => { onCancelEdit(); setForm(emptyForm); }}
+                        className="px-6 py-3 rounded-lg text-sm font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition">
+                        Cancelar
+                    </button>
+                )}
+                <button type="submit"
+                    className="px-8 py-3 rounded-lg text-sm font-bold bg-gradient-to-r from-brand-500 to-brand-600 text-white hover:from-brand-600 hover:to-brand-700 transition shadow-lg shadow-brand-500/20 flex items-center gap-2">
+                    <Icon name="save" size={16} />
+                    {editingPlayer ? 'Actualizar Jugador' : 'Registrar Jugador'}
+                </button>
+            </div>
+        </form>
+    );
+};
+
+// ============ TABLA / BASE DE DATOS ============
+const DatabaseView = ({ players, onEdit, onDelete }) => {
+    const [search, setSearch] = useState('');
+    const [filterCategory, setFilterCategory] = useState('');
+    const [filterGender, setFilterGender] = useState('');
+
+    const filtered = useMemo(() => {
+        return players.filter(p => {
+            const matchSearch = !search || p.fullName.toLowerCase().includes(search.toLowerCase()) || p.dni.includes(search);
+            const matchCat = !filterCategory || calculateCategory(p.birthDate) === filterCategory;
+            const matchGender = !filterGender || p.gender === filterGender;
+            return matchSearch && matchCat && matchGender;
+        });
+    }, [players, search, filterCategory, filterGender]);
+
+    const FileStatus = ({ url }) => (
+        <div className={`w-5 h-5 rounded-full flex items-center justify-center ${url ? 'bg-green-500/20 text-green-400' : 'bg-gray-700 text-gray-500'}`}>
+            <Icon name={url ? 'check' : 'x'} size={12} />
+        </div>
+    );
+
+    return (
+        <div className="space-y-4 animate-in">
+            {/* Toolbar */}
+            <div className="flex flex-col md:flex-row gap-3 items-start md:items-center justify-between">
+                <div className="flex flex-col sm:flex-row gap-3 flex-1 w-full">
+                    <div className="relative flex-1 max-w-sm">
+                        <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre o DNI..."
+                            className="w-full bg-dark-850 border border-gray-700 rounded-lg pl-9 pr-3 py-2.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-brand-500 transition" />
+                    </div>
+                    <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+                        className="bg-dark-850 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-brand-500 transition">
+                        <option value="">Todas las categorías</option>
+                        {['U13','U15','U17','U19','U21','Mayores'].map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <select value={filterGender} onChange={e => setFilterGender(e.target.value)}
+                        className="bg-dark-850 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-300 focus:outline-none focus:border-brand-500 transition">
+                        <option value="">Todas las ramas</option>
+                        <option value="Masculino">Masculino</option>
+                        <option value="Femenino">Femenino</option>
+                    </select>
+                </div>
+                <button onClick={() => exportToCSV(players)}
+                    className="px-5 py-2.5 rounded-lg text-sm font-bold bg-green-600 text-white hover:bg-green-700 transition flex items-center gap-2 shadow-lg shadow-green-600/20 whitespace-nowrap">
+                    <Icon name="download" size={16} />
+                    Exportar a Excel
+                </button>
+            </div>
+
+            {/* Contador */}
+            <p className="text-xs text-gray-500">{filtered.length} de {players.length} jugadores</p>
+
+            {/* Tabla */}
+            <div className="overflow-x-auto rounded-xl border border-gray-700/50">
+                <table className="w-full text-sm">
+                    <thead className="bg-dark-850 border-b border-gray-700/50">
+                        <tr>
+                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Jugador</th>
+                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">DNI</th>
+                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Categoría</th>
+                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Rama</th>
+                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Talles</th>
+                            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Emergencia</th>
+                            <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Docs</th>
+                            <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-700/30">
+                        {filtered.map(p => (
+                            <tr key={p.id} className="hover:bg-dark-850/50 transition">
+                                <td className="px-4 py-3 font-medium text-gray-100">{p.fullName}</td>
+                                <td className="px-4 py-3 text-gray-400 font-mono text-xs">{p.dni}</td>
+                                <td className="px-4 py-3"><span className="px-2 py-1 rounded-md bg-brand-500/10 text-brand-400 text-xs font-bold">{calculateCategory(p.birthDate)}</span></td>
+                                <td className="px-4 py-3 text-gray-400">{p.gender}</td>
+                                <td className="px-4 py-3 text-xs text-gray-400 font-mono">C:{p.shirtSize||'—'} | P:{p.shortSize||'—'}</td>
+                                <td className="px-4 py-3 text-xs text-gray-400">{p.emergencyName}<br/><span className="text-gray-500">{p.emergencyPhone}</span></td>
+                                <td className="px-4 py-3">
+                                    <div className="flex items-center justify-center gap-1">
+                                        <FileStatus url={p.files?.photo} />
+                                        <FileStatus url={p.files?.dniFront} />
+                                        <FileStatus url={p.files?.dniBack} />
+                                        <FileStatus url={p.files?.dniTutor} />
+                                        <FileStatus url={p.files?.medCert} />
+                                    </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <button onClick={() => onEdit(p)} className="p-1.5 rounded-md hover:bg-blue-500/10 text-blue-400 transition" title="Editar">
+                                            <Icon name="edit" size={15} />
+                                        </button>
+                                        <button onClick={() => { if(confirm('¿Eliminar a ' + p.fullName + '?')) onDelete(p.id); }} className="p-1.5 rounded-md hover:bg-red-500/10 text-red-400 transition" title="Eliminar">
+                                            <Icon name="trash" size={15} />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                        {filtered.length === 0 && (
+                            <tr><td colSpan="8" className="px-4 py-12 text-center text-gray-500">No se encontraron jugadores.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
+// ============ APP PRINCIPAL ============
+const App = () => {
+    const [tab, setTab] = useState('form');
+    const [players, setPlayers] = useState(() => {
+        const saved = localStorage.getItem('basketball_players');
+        return saved ? JSON.parse(saved) : MOCK_PLAYERS;
+    });
+    const [editingPlayer, setEditingPlayer] = useState(null);
+
+    useEffect(() => { localStorage.setItem('basketball_players', JSON.stringify(players)); }, [players]);
+
+    const handleSave = (player) => {
+        setPlayers(prev => {
+            const exists = prev.find(p => p.id === player.id);
+            if (exists) return prev.map(p => p.id === player.id ? player : p);
+            return [...prev, player];
+        });
+        setEditingPlayer(null);
+        if (editingPlayer) setTab('db');
+    };
+
+    const handleEdit = (player) => { setEditingPlayer(player); setTab('form'); };
+    const handleDelete = (id) => setPlayers(prev => prev.filter(p => p.id !== id));
+
+    return (
+        <div className="min-h-screen bg-dark-900">
+            {/* Header */}
+            <header className="bg-dark-850 border-b border-gray-700/50 sticky top-0 z-50 backdrop-blur-md bg-opacity-90">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-lg shadow-brand-500/20">
+                                <Icon name="basketball" size={22} className="text-white" />
+                            </div>
+                            <div>
+                                <h1 className="font-display text-2xl tracking-wider text-white leading-none">CLUB BASKET</h1>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-widest">Sistema de Gestión de Jugadores</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 bg-dark-900 rounded-lg p-1 border border-gray-700/50">
+                            <button onClick={() => setTab('form')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${tab === 'form' ? 'bg-brand-500 text-white shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>
+                                <Icon name="clipboard" size={16} />
+                                <span className="hidden sm:inline">Ficha de Inscripción</span>
+                            </button>
+                            <button onClick={() => setTab('db')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${tab === 'db' ? 'bg-brand-500 text-white shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>
+                                <Icon name="database" size={16} />
+                                <span className="hidden sm:inline">Base de Datos</span>
+                                <span className="bg-gray-700 text-gray-300 text-xs rounded-full px-2 py-0.5 ml-1">{players.length}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            {/* Content */}
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+                {tab === 'form' && <InscriptionForm onSave={handleSave} editingPlayer={editingPlayer} onCancelEdit={() => setEditingPlayer(null)} />}
+                {tab === 'db' && <DatabaseView players={players} onEdit={handleEdit} onDelete={handleDelete} />}
+            </main>
+        </div>
+    );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
